@@ -2,13 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Maze Escape</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -20,6 +23,8 @@
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             color: #fff;
+            overflow: hidden;
+            touch-action: none;
         }
 
         h1 {
@@ -45,6 +50,7 @@
             border-radius: 8px;
             box-shadow: 0 0 30px rgba(78, 205, 196, 0.3);
             background: #2c3e50;
+            touch-action: none;
         }
 
         #maze-canvas {
@@ -142,7 +148,7 @@
             <button id="new-game-btn">New Game</button>
         </div>
         
-        <div id="instructions">Use Arrow Keys or WASD to move • Press N for next level</div>
+        <div id="instructions">Use Arrow Keys/WASD or Swipe to move • Press N for next level</div>
     </div>
 
     <script>
@@ -579,6 +585,66 @@
         document.addEventListener('keyup', (e) => {
             game.keys[e.key] = false;
         });
+
+        // Touch/swipe support for mobile
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchStartTime = 0;
+        let isTouching = false;
+
+        canvasWrapper.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+            touchStartTime = Date.now();
+            isTouching = true;
+        }, { passive: false });
+
+        canvasWrapper.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!isTouching) return;
+
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - touchStartX;
+            const deltaY = touch.clientY - touchStartY;
+
+            // Clear all direction keys first
+            game.keys['ArrowUp'] = false;
+            game.keys['ArrowDown'] = false;
+            game.keys['ArrowLeft'] = false;
+            game.keys['ArrowRight'] = false;
+
+            // Determine primary direction (threshold of 10 pixels)
+            if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
+                if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                    // Horizontal movement
+                    if (deltaX > 0) {
+                        game.keys['ArrowRight'] = true;
+                    } else {
+                        game.keys['ArrowLeft'] = true;
+                    }
+                } else {
+                    // Vertical movement
+                    if (deltaY > 0) {
+                        game.keys['ArrowDown'] = true;
+                    } else {
+                        game.keys['ArrowUp'] = true;
+                    }
+                }
+            }
+        }, { passive: false });
+
+        canvasWrapper.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            isTouching = false;
+
+            // Clear all direction keys
+            game.keys['ArrowUp'] = false;
+            game.keys['ArrowDown'] = false;
+            game.keys['ArrowLeft'] = false;
+            game.keys['ArrowRight'] = false;
+        }, { passive: false });
 
         // Button handlers
         newGameBtn.addEventListener('click', () => startGame(1));
