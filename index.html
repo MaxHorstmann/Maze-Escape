@@ -152,6 +152,7 @@
             baseSize: 11,      // Starting maze size (must be odd)
             sizeIncrement: 4,  // How much maze grows per level
             maxSize: 201,      // Maximum maze size (very large, requires scrolling)
+            moveSpeed: 3,      // Pixels per frame
             colors: {
                 wall: '#2c3e50',
                 path: '#ecf0f1',
@@ -166,14 +167,16 @@
             maze: [],
             width: 0,
             height: 0,
-            player: { x: 1, y: 1 },
-            exit: { x: 0, y: 0 },
+            player: { x: 0, y: 0 },  // Pixel coordinates
+            exit: { x: 0, y: 0 },    // Grid coordinates
             moves: 0,
             startTime: 0,
             timerInterval: null,
             level: 1,
             won: false,
-            visited: new Set()
+            visited: new Set(),
+            keys: {},  // Track pressed keys
+            animationId: null
         };
 
         // ==================== DOM ELEMENTS ====================
@@ -229,20 +232,12 @@
 
         // ==================== RENDERING ====================
         function centerViewOnPlayer() {
-            const { cellSize } = CONFIG;
-            const playerCenterX = game.player.x * cellSize + cellSize / 2;
-            const playerCenterY = game.player.y * cellSize + cellSize / 2;
+            // Calculate scroll position to center player (player is already in pixel coords)
+            const scrollX = game.player.x - canvasWrapper.clientWidth / 2;
+            const scrollY = game.player.y - canvasWrapper.clientHeight / 2;
 
-            // Calculate scroll position to center player
-            const scrollX = playerCenterX - canvasWrapper.clientWidth / 2;
-            const scrollY = playerCenterY - canvasWrapper.clientHeight / 2;
-
-            // Smooth scroll to position
-            canvasWrapper.scrollTo({
-                left: scrollX,
-                top: scrollY,
-                behavior: 'smooth'
-            });
+            // Instant scroll (smooth behavior creates lag with continuous movement)
+            canvasWrapper.scrollTo(scrollX, scrollY);
         }
 
         function render() {
@@ -283,60 +278,119 @@
                 game.exit.y * cellSize + cellSize / 2
             );
             
-            // Draw player
+            // Draw player (using pixel coordinates)
             ctx.fillStyle = colors.player;
             ctx.beginPath();
             ctx.arc(
-                game.player.x * cellSize + cellSize / 2,
-                game.player.y * cellSize + cellSize / 2,
+                game.player.x,
+                game.player.y,
                 cellSize / 2 - 4,
                 0,
                 Math.PI * 2
             );
             ctx.fill();
-            
+
             // Draw player face
             ctx.fillStyle = '#fff';
             ctx.font = `${cellSize * 0.5}px Arial`;
             ctx.fillText('😊',
-                game.player.x * cellSize + cellSize / 2,
-                game.player.y * cellSize + cellSize / 2
+                game.player.x,
+                game.player.y
             );
         }
 
         // ==================== GAME LOGIC ====================
-        function movePlayer(dx, dy) {
+        function getGridPos(pixelX, pixelY) {
+            const { cellSize } = CONFIG;
+            return {
+                x: Math.floor(pixelX / cellSize),
+                y: Math.floor(pixelY / cellSize)
+            };
+        }
+
+        function canMoveTo(pixelX, pixelY) {
+            const { cellSize } = CONFIG;
+            const radius = cellSize / 2 - 4;
+
+            // Check multiple points around the player circle
+            const points = [
+                { x: pixelX, y: pixelY },
+                { x: pixelX + radius, y: pixelY },
+                { x: pixelX - radius, y: pixelY },
+                { x: pixelX, y: pixelY + radius },
+                { x: pixelX, y: pixelY - radius }
+            ];
+
+            for (const point of points) {
+                const gridPos = getGridPos(point.x, point.y);
+                if (gridPos.x < 0 || gridPos.x >= game.width ||
+                    gridPos.y < 0 || gridPos.y >= game.height ||
+                    game.maze[gridPos.y][gridPos.x] === 1) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function updateGame() {
             if (game.won) return;
-            
-            const newX = game.player.x + dx;
-            const newY = game.player.y + dy;
-            
-            // Check bounds and walls
-            if (newX >= 0 && newX < game.width && 
-                newY >= 0 && newY < game.height && 
-                game.maze[newY][newX] === 0) {
-                
+
+            const { moveSpeed, cellSize } = CONFIG;
+            let moved = false;
+            let newX = game.player.x;
+            let newY = game.player.y;
+
+            // Calculate new position based on pressed keys
+            if (game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) {
+                newY -= moveSpeed;
+                moved = true;
+            }
+            if (game.keys['ArrowDown'] || game.keys['s'] || game.keys['S']) {
+                newY += moveSpeed;
+                moved = true;
+            }
+            if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) {
+                newX -= moveSpeed;
+                moved = true;
+            }
+            if (game.keys['ArrowRight'] || game.keys['d'] || game.keys['D']) {
+                newX += moveSpeed;
+                moved = true;
+            }
+
+            // Apply movement if valid
+            if (moved && canMoveTo(newX, newY)) {
                 game.player.x = newX;
                 game.player.y = newY;
-                game.moves++;
-                movesEl.textContent = game.moves;
 
                 // Track visited cells
-                game.visited.add(`${newX},${newY}`);
+                const gridPos = getGridPos(newX, newY);
+                game.visited.add(`${gridPos.x},${gridPos.y}`);
 
                 // Check win condition
-                if (newX === game.exit.x && newY === game.exit.y) {
+                const distToExit = Math.sqrt(
+                    Math.pow(gridPos.x - game.exit.x, 2) +
+                    Math.pow(gridPos.y - game.exit.y, 2)
+                );
+                if (distToExit < 0.5) {
                     win();
                 }
 
-                render();
                 centerViewOnPlayer();
             }
+
+            render();
+        }
+
+        function gameLoop() {
+            updateGame();
+            game.animationId = requestAnimationFrame(gameLoop);
         }
 
         function win() {
             game.won = true;
             clearInterval(game.timerInterval);
+            game.keys = {};  // Clear all key states
             messageEl.textContent = `🎉 Level ${game.level} Complete! 🎉`;
             messageEl.classList.add('win');
 
@@ -370,9 +424,13 @@
             
             // Generate maze
             game.maze = generateMaze(game.width, game.height);
-            
-            // Set player start position
-            game.player = { x: 1, y: 1 };
+
+            // Set player start position (convert grid to pixel coords - center of cell)
+            const { cellSize } = CONFIG;
+            game.player = {
+                x: 1 * cellSize + cellSize / 2,
+                y: 1 * cellSize + cellSize / 2
+            };
             game.visited.add('1,1');
             
             // Set exit position (bottom-right corner area)
@@ -397,6 +455,12 @@
 
             // Center view on player after a short delay to ensure canvas is rendered
             setTimeout(() => centerViewOnPlayer(), 50);
+
+            // Start game loop
+            if (game.animationId) {
+                cancelAnimationFrame(game.animationId);
+            }
+            gameLoop();
         }
 
         function nextLevel() {
@@ -405,37 +469,21 @@
 
         // ==================== INPUT HANDLING ====================
         document.addEventListener('keydown', (e) => {
-            switch (e.key) {
-                case 'ArrowUp':
-                case 'w':
-                case 'W':
-                    e.preventDefault();
-                    movePlayer(0, -1);
-                    break;
-                case 'ArrowDown':
-                case 's':
-                case 'S':
-                    e.preventDefault();
-                    movePlayer(0, 1);
-                    break;
-                case 'ArrowLeft':
-                case 'a':
-                case 'A':
-                    e.preventDefault();
-                    movePlayer(-1, 0);
-                    break;
-                case 'ArrowRight':
-                case 'd':
-                case 'D':
-                    e.preventDefault();
-                    movePlayer(1, 0);
-                    break;
-                case 'n':
-                case 'N':
-                    e.preventDefault();
-                    nextLevel();
-                    break;
+            const movementKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'W', 'a', 'A', 's', 'S', 'd', 'D'];
+
+            if (movementKeys.includes(e.key)) {
+                e.preventDefault();
+                game.keys[e.key] = true;
             }
+
+            if (e.key === 'n' || e.key === 'N') {
+                e.preventDefault();
+                nextLevel();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            game.keys[e.key] = false;
         });
 
         // Button handlers
