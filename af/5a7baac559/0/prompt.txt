@@ -1,0 +1,13 @@
+look at this repo
+
+---
+
+when a level is completed, I don't wanna have to click a button. instead, show an animated "level completed" and automatically move to the next level after a few seconds
+
+---
+
+open it in a browser
+
+---
+
+commit this
