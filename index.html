@@ -34,12 +34,21 @@
             flex-direction: column;
             align-items: center;
             gap: 20px;
+            max-height: 90vh;
         }
 
-        #maze-canvas {
+        #canvas-wrapper {
+            overflow: auto;
+            max-width: 90vw;
+            max-height: 60vh;
             border: 4px solid #4ecdc4;
             border-radius: 8px;
             box-shadow: 0 0 30px rgba(78, 205, 196, 0.3);
+            background: #2c3e50;
+        }
+
+        #maze-canvas {
+            display: block;
         }
 
         #stats {
@@ -122,8 +131,10 @@
             <div class="stat">Time: <span id="time" class="stat-value">0:00</span></div>
             <div class="stat">Level: <span id="level" class="stat-value">1</span></div>
         </div>
-        
-        <canvas id="maze-canvas"></canvas>
+
+        <div id="canvas-wrapper">
+            <canvas id="maze-canvas"></canvas>
+        </div>
         
         <div id="message"></div>
         
@@ -131,7 +142,7 @@
             <button id="new-game-btn">New Game</button>
         </div>
         
-        <div id="instructions">Use Arrow Keys or WASD to move</div>
+        <div id="instructions">Use Arrow Keys or WASD to move • Press N for next level</div>
     </div>
 
     <script>
@@ -139,8 +150,8 @@
         const CONFIG = {
             cellSize: 30,
             baseSize: 11,      // Starting maze size (must be odd)
-            sizeIncrement: 2,  // How much maze grows per level
-            maxSize: 31,       // Maximum maze size
+            sizeIncrement: 4,  // How much maze grows per level
+            maxSize: 201,      // Maximum maze size (very large, requires scrolling)
             colors: {
                 wall: '#2c3e50',
                 path: '#ecf0f1',
@@ -168,6 +179,7 @@
         // ==================== DOM ELEMENTS ====================
         const canvas = document.getElementById('maze-canvas');
         const ctx = canvas.getContext('2d');
+        const canvasWrapper = document.getElementById('canvas-wrapper');
         const movesEl = document.getElementById('moves');
         const timeEl = document.getElementById('time');
         const levelEl = document.getElementById('level');
@@ -216,6 +228,23 @@
         }
 
         // ==================== RENDERING ====================
+        function centerViewOnPlayer() {
+            const { cellSize } = CONFIG;
+            const playerCenterX = game.player.x * cellSize + cellSize / 2;
+            const playerCenterY = game.player.y * cellSize + cellSize / 2;
+
+            // Calculate scroll position to center player
+            const scrollX = playerCenterX - canvasWrapper.clientWidth / 2;
+            const scrollY = playerCenterY - canvasWrapper.clientHeight / 2;
+
+            // Smooth scroll to position
+            canvasWrapper.scrollTo({
+                left: scrollX,
+                top: scrollY,
+                behavior: 'smooth'
+            });
+        }
+
         function render() {
             const { cellSize, colors } = CONFIG;
             
@@ -291,16 +320,17 @@
                 game.player.y = newY;
                 game.moves++;
                 movesEl.textContent = game.moves;
-                
+
                 // Track visited cells
                 game.visited.add(`${newX},${newY}`);
-                
+
                 // Check win condition
                 if (newX === game.exit.x && newY === game.exit.y) {
                     win();
                 }
-                
+
                 render();
+                centerViewOnPlayer();
             }
         }
 
@@ -362,8 +392,11 @@
             game.startTime = Date.now();
             game.timerInterval = setInterval(updateTimer, 1000);
             updateTimer();
-            
+
             render();
+
+            // Center view on player after a short delay to ensure canvas is rendered
+            setTimeout(() => centerViewOnPlayer(), 50);
         }
 
         function nextLevel() {
@@ -396,6 +429,11 @@
                 case 'D':
                     e.preventDefault();
                     movePlayer(1, 0);
+                    break;
+                case 'n':
+                case 'N':
+                    e.preventDefault();
+                    nextLevel();
                     break;
             }
         });
