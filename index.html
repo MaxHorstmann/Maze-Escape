@@ -64,6 +64,23 @@
             height: 40px;
             color: #f7dc6f;
             text-shadow: 0 0 10px rgba(247, 220, 111, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        #message.win {
+            font-size: 2rem;
+            color: #4ecdc4;
+            text-shadow: 0 0 20px rgba(78, 205, 196, 0.8);
+            animation: pulse 0.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse {
+            from {
+                transform: scale(1);
+            }
+            to {
+                transform: scale(1.1);
+            }
         }
 
         #controls {
@@ -112,7 +129,6 @@
         
         <div id="controls">
             <button id="new-game-btn">New Game</button>
-            <button id="next-level-btn" style="display: none;">Next Level →</button>
         </div>
         
         <div id="instructions">Use Arrow Keys or WASD to move</div>
@@ -157,7 +173,6 @@
         const levelEl = document.getElementById('level');
         const messageEl = document.getElementById('message');
         const newGameBtn = document.getElementById('new-game-btn');
-        const nextLevelBtn = document.getElementById('next-level-btn');
 
         // ==================== MAZE GENERATION ====================
         function generateMaze(width, height) {
@@ -293,7 +308,13 @@
             game.won = true;
             clearInterval(game.timerInterval);
             messageEl.textContent = `🎉 Level ${game.level} Complete! 🎉`;
-            nextLevelBtn.style.display = 'inline-block';
+            messageEl.classList.add('win');
+
+            // Auto-advance to next level after 2 seconds
+            setTimeout(() => {
+                messageEl.classList.remove('win');
+                nextLevel();
+            }, 2000);
         }
 
         function updateTimer() {
@@ -335,7 +356,6 @@
             movesEl.textContent = '0';
             levelEl.textContent = level;
             messageEl.textContent = 'Find the exit! 🚪';
-            nextLevelBtn.style.display = 'none';
             
             // Start timer
             clearInterval(game.timerInterval);
@@ -382,7 +402,6 @@
 
         // Button handlers
         newGameBtn.addEventListener('click', () => startGame(1));
-        nextLevelBtn.addEventListener('click', nextLevel);
 
         // ==================== START GAME ====================
         startGame(1);
