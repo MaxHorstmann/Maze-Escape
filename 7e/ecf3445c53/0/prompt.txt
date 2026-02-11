@@ -1,0 +1,41 @@
+look at this repo
+
+---
+
+when a level is completed, I don't wanna have to click a button. instead, show an animated "level completed" and automatically move to the next level after a few seconds
+
+---
+
+open it in a browser
+
+---
+
+commit this
+
+---
+
+push it
+
+---
+
+can I run console commands here? Or should I open a separate terminal?
+
+---
+
+back to the game. The maze should get bigger with every level.
+
+---
+
+yes it should get much bigger over time, potentially require horizontal and vertical scrolling
+
+---
+
+the maze doesn't scroll. I just exited at the bottom in level 4. Actually, can we just constantly scroll smootly, so that the avatar is basically always in the middle of the screen?
+
+---
+
+add a keyboard shortcut: hitting n just takes me to the next level
+
+---
+
+ok commit this
