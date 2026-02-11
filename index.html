@@ -153,12 +153,15 @@
             sizeIncrement: 4,  // How much maze grows per level
             maxSize: 201,      // Maximum maze size (very large, requires scrolling)
             moveSpeed: 3,      // Pixels per frame
+            adversaryDelay: 3000,  // ms before adversary starts chasing
+            adversarySpeed: 2.5,   // Pixels per frame (slightly slower than player)
             colors: {
                 wall: '#2c3e50',
                 path: '#ecf0f1',
                 player: '#e74c3c',
                 exit: '#27ae60',
-                visited: '#d5f4e6'
+                visited: '#d5f4e6',
+                adversary: '#ff6b35'
             }
         };
 
@@ -176,7 +179,10 @@
             won: false,
             visited: new Set(),
             keys: {},  // Track pressed keys
-            animationId: null
+            animationId: null,
+            playerPath: [],  // Record of player positions
+            adversary: { x: 0, y: 0, active: false, pathIndex: 0 },
+            firstMoveTime: null  // Track when player first moves
         };
 
         // ==================== DOM ELEMENTS ====================
@@ -297,6 +303,28 @@
                 game.player.x,
                 game.player.y
             );
+
+            // Draw adversary if active
+            if (game.adversary.active) {
+                ctx.fillStyle = colors.adversary;
+                ctx.beginPath();
+                ctx.arc(
+                    game.adversary.x,
+                    game.adversary.y,
+                    cellSize / 2 - 4,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                // Draw fire emoji
+                ctx.fillStyle = '#fff';
+                ctx.font = `${cellSize * 0.5}px Arial`;
+                ctx.fillText('🔥',
+                    game.adversary.x,
+                    game.adversary.y
+                );
+            }
         }
 
         // ==================== GAME LOGIC ====================
@@ -335,7 +363,7 @@
         function updateGame() {
             if (game.won) return;
 
-            const { moveSpeed, cellSize } = CONFIG;
+            const { moveSpeed, cellSize, adversarySpeed, adversaryDelay } = CONFIG;
             let moved = false;
             let newX = game.player.x;
             let newY = game.player.y;
@@ -360,8 +388,16 @@
 
             // Apply movement if valid
             if (moved && canMoveTo(newX, newY)) {
+                // Record first move time
+                if (!game.firstMoveTime) {
+                    game.firstMoveTime = Date.now();
+                }
+
                 game.player.x = newX;
                 game.player.y = newY;
+
+                // Record player path
+                game.playerPath.push({ x: newX, y: newY });
 
                 // Track visited cells
                 const gridPos = getGridPos(newX, newY);
@@ -377,6 +413,47 @@
                 }
 
                 centerViewOnPlayer();
+            }
+
+            // Activate adversary after delay
+            if (game.firstMoveTime && !game.adversary.active) {
+                if (Date.now() - game.firstMoveTime >= adversaryDelay) {
+                    game.adversary.active = true;
+                }
+            }
+
+            // Update adversary position
+            if (game.adversary.active && game.playerPath.length > 0) {
+                // Move along the player's path
+                if (game.adversary.pathIndex < game.playerPath.length - 1) {
+                    const target = game.playerPath[game.adversary.pathIndex];
+                    const dx = target.x - game.adversary.x;
+                    const dy = target.y - game.adversary.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < adversarySpeed) {
+                        // Reached this point, move to next
+                        game.adversary.pathIndex++;
+                        if (game.adversary.pathIndex < game.playerPath.length) {
+                            const nextTarget = game.playerPath[game.adversary.pathIndex];
+                            game.adversary.x = nextTarget.x;
+                            game.adversary.y = nextTarget.y;
+                        }
+                    } else {
+                        // Move towards current target
+                        game.adversary.x += (dx / distance) * adversarySpeed;
+                        game.adversary.y += (dy / distance) * adversarySpeed;
+                    }
+                }
+
+                // Check collision with player
+                const dx = game.player.x - game.adversary.x;
+                const dy = game.player.y - game.adversary.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < cellSize / 2) {
+                    die();
+                }
             }
 
             render();
@@ -401,6 +478,19 @@
             }, 2000);
         }
 
+        function die() {
+            game.won = true;  // Stop game loop
+            game.keys = {};  // Clear all key states
+            messageEl.textContent = `💀 Caught by fire! Restarting...`;
+            messageEl.classList.add('win');
+
+            // Restart level after 1.5 seconds
+            setTimeout(() => {
+                messageEl.classList.remove('win');
+                startGame(game.level);
+            }, 1500);
+        }
+
         function updateTimer() {
             const elapsed = Math.floor((Date.now() - game.startTime) / 1000);
             const minutes = Math.floor(elapsed / 60);
@@ -413,7 +503,7 @@
             game.won = false;
             game.moves = 0;
             game.visited.clear();
-            
+
             // Calculate maze size based on level
             const size = Math.min(
                 CONFIG.baseSize + (level - 1) * CONFIG.sizeIncrement,
@@ -421,17 +511,21 @@
             );
             game.width = size;
             game.height = size;
-            
+
             // Generate maze
             game.maze = generateMaze(game.width, game.height);
 
             // Set player start position (convert grid to pixel coords - center of cell)
             const { cellSize } = CONFIG;
-            game.player = {
-                x: 1 * cellSize + cellSize / 2,
-                y: 1 * cellSize + cellSize / 2
-            };
+            const startX = 1 * cellSize + cellSize / 2;
+            const startY = 1 * cellSize + cellSize / 2;
+            game.player = { x: startX, y: startY };
             game.visited.add('1,1');
+
+            // Reset adversary
+            game.adversary = { x: startX, y: startY, active: false, pathIndex: 0 };
+            game.playerPath = [];
+            game.firstMoveTime = null;
             
             // Set exit position (bottom-right corner area)
             game.exit = { x: game.width - 2, y: game.height - 2 };
