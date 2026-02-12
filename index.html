@@ -190,7 +190,7 @@
             keys: {},  // Track pressed keys
             animationId: null,
             playerPath: [],  // Record of player positions
-            adversary: { x: 0, y: 0, active: false, pathIndex: 0, dropping: false, dropY: 0 },
+            adversary: { x: 0, y: 0, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false },
             firstMoveTime: null,  // Track when player first moves
             bucket: { x: 0, y: 0, picked: false }  // Water bucket state
         };
@@ -485,11 +485,12 @@
                     if (distToBucket < CONFIG.bucketCollisionDist) {
                         // Pick up bucket - it disappears
                         game.bucket.picked = true;
-                        // Start fire drop animation
+                        // Start fire drop animation and mark as killed
                         if (game.adversary.active) {
                             game.adversary.dropping = true;
                             game.adversary.dropY = game.adversary.y;
                             game.adversary.active = false;
+                            game.adversary.killed = true;
                         }
                         messageEl.textContent = '💧 Bucket collected! Fire extinguished! 🔥';
                     }
@@ -507,8 +508,8 @@
                 }
             }
 
-            // Activate adversary after delay
-            if (game.firstMoveTime && !game.adversary.active) {
+            // Activate adversary after delay (but not if it was killed by bucket)
+            if (game.firstMoveTime && !game.adversary.active && !game.adversary.killed) {
                 if (Date.now() - game.firstMoveTime >= adversaryDelay) {
                     game.adversary.active = true;
                 }
@@ -615,7 +616,7 @@
             game.visited.add('1,1');
 
             // Reset adversary
-            game.adversary = { x: startX, y: startY, active: false, pathIndex: 0, dropping: false, dropY: 0 };
+            game.adversary = { x: startX, y: startY, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false };
             game.playerPath = [];
             game.firstMoveTime = null;
             
