@@ -161,6 +161,8 @@
             moveSpeed: 3,      // Pixels per frame
             adversaryDelay: 3000,  // ms before adversary starts chasing
             adversarySpeed: 2.0,   // Pixels per frame (slower than player for easier gameplay)
+            bucketCollisionDist: 0.7,  // Grid cells distance for bucket pickup
+            bucketDropSpeed: 5,    // Pixels per frame for bucket drop animation
             colors: {
                 wall: '#2c3e50',
                 path: '#ecf0f1',
@@ -380,6 +382,8 @@
                 // Draw bucket emoji
                 ctx.fillStyle = '#fff';
                 ctx.font = `${cellSize * 0.5}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
                 ctx.fillText('💧',
                     game.bucket.x * cellSize + cellSize / 2,
                     game.bucket.y * cellSize + cellSize / 2
@@ -400,6 +404,8 @@
                 // Draw bucket emoji
                 ctx.fillStyle = '#fff';
                 ctx.font = `${cellSize * 0.5}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
                 ctx.fillText('💧',
                     game.bucket.x * cellSize + cellSize / 2,
                     game.bucket.dropY
@@ -498,7 +504,7 @@
                         Math.pow(gridPos.x - game.bucket.x, 2) +
                         Math.pow(gridPos.y - game.bucket.y, 2)
                     );
-                    if (distToBucket < 0.7) {
+                    if (distToBucket < CONFIG.bucketCollisionDist) {
                         // Pick up bucket
                         game.bucket.picked = true;
                         game.bucket.dropY = game.bucket.y * cellSize + cellSize / 2;
@@ -513,7 +519,7 @@
 
             // Animate bucket dropping off screen
             if (game.bucket.picked && game.bucket.dropY < canvas.height + cellSize) {
-                game.bucket.dropY += 5;  // Drop speed
+                game.bucket.dropY += CONFIG.bucketDropSpeed;  // Drop speed
             }
 
             // Activate adversary after delay
