@@ -167,7 +167,8 @@
                 player: '#e74c3c',
                 exit: '#27ae60',
                 visited: '#d5f4e6',
-                adversary: '#ff6b35'
+                adversary: '#ff6b35',
+                bucket: '#3498db'
             }
         };
 
@@ -188,7 +189,8 @@
             animationId: null,
             playerPath: [],  // Record of player positions
             adversary: { x: 0, y: 0, active: false, pathIndex: 0 },
-            firstMoveTime: null  // Track when player first moves
+            firstMoveTime: null,  // Track when player first moves
+            bucket: { x: 0, y: 0, picked: false, dropY: 0 }  // Water bucket state
         };
 
         // ==================== DOM ELEMENTS ====================
@@ -241,6 +243,36 @@
             
             return maze;
         }
+
+        // Find bucket position as detour from optimal path
+        function getBucketSpot(width, height, grid) {
+            const openCells = [];
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    if (grid[y][x] === 0) {
+                        openCells.push({ x: x, y: y });
+                    }
+                }
+            }
+
+            const startCorner = { x: 1, y: 1 };
+            const endCorner = { x: width - 2, y: height - 2 };
+            const totalDist = Math.sqrt(Math.pow(endCorner.x - startCorner.x, 2) + Math.pow(endCorner.y - startCorner.y, 2));
+            const minDistFromCorners = totalDist * 0.25;
+
+            const filtered = openCells.filter(cell => {
+                const toStart = Math.sqrt(Math.pow(cell.x - startCorner.x, 2) + Math.pow(cell.y - startCorner.y, 2));
+                const toEnd = Math.sqrt(Math.pow(cell.x - endCorner.x, 2) + Math.pow(cell.y - endCorner.y, 2));
+                return toStart > minDistFromCorners && toEnd > minDistFromCorners;
+            });
+
+            if (filtered.length > 0) {
+                return filtered[Math.floor(Math.random() * filtered.length)];
+            }
+            
+            return { x: Math.floor(width / 2), y: Math.floor(height / 2) };
+        }
+
 
         // ==================== RENDERING ====================
         function centerViewOnPlayer() {
@@ -331,6 +363,48 @@
                     game.adversary.y
                 );
             }
+
+            // Draw water bucket if not picked up
+            if (!game.bucket.picked) {
+                ctx.fillStyle = colors.bucket;
+                ctx.beginPath();
+                ctx.arc(
+                    game.bucket.x * cellSize + cellSize / 2,
+                    game.bucket.y * cellSize + cellSize / 2,
+                    cellSize / 2 - 4,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                // Draw bucket emoji
+                ctx.fillStyle = '#fff';
+                ctx.font = `${cellSize * 0.5}px Arial`;
+                ctx.fillText('💧',
+                    game.bucket.x * cellSize + cellSize / 2,
+                    game.bucket.y * cellSize + cellSize / 2
+                );
+            } else if (game.bucket.dropY < canvas.height) {
+                // Draw bucket dropping off screen
+                ctx.fillStyle = colors.bucket;
+                ctx.beginPath();
+                ctx.arc(
+                    game.bucket.x * cellSize + cellSize / 2,
+                    game.bucket.dropY,
+                    cellSize / 2 - 4,
+                    0,
+                    Math.PI * 2
+                );
+                ctx.fill();
+
+                // Draw bucket emoji
+                ctx.fillStyle = '#fff';
+                ctx.font = `${cellSize * 0.5}px Arial`;
+                ctx.fillText('💧',
+                    game.bucket.x * cellSize + cellSize / 2,
+                    game.bucket.dropY
+                );
+            }
         }
 
         // ==================== GAME LOGIC ====================
@@ -418,7 +492,28 @@
                     win();
                 }
 
+                // Check bucket collision
+                if (!game.bucket.picked) {
+                    const distToBucket = Math.sqrt(
+                        Math.pow(gridPos.x - game.bucket.x, 2) +
+                        Math.pow(gridPos.y - game.bucket.y, 2)
+                    );
+                    if (distToBucket < 0.7) {
+                        // Pick up bucket
+                        game.bucket.picked = true;
+                        game.bucket.dropY = game.bucket.y * cellSize + cellSize / 2;
+                        // Deactivate adversary (kill fire)
+                        game.adversary.active = false;
+                        messageEl.textContent = '💧 Bucket collected! Fire extinguished! 🔥';
+                    }
+                }
+
                 centerViewOnPlayer();
+            }
+
+            // Animate bucket dropping off screen
+            if (game.bucket.picked && game.bucket.dropY < canvas.height + cellSize) {
+                game.bucket.dropY += 5;  // Drop speed
             }
 
             // Activate adversary after delay
@@ -535,6 +630,10 @@
             
             // Set exit position (bottom-right corner area)
             game.exit = { x: game.width - 2, y: game.height - 2 };
+            
+            // Place water bucket at detour location
+            const bucketPos = getBucketSpot(game.width, game.height, game.maze);
+            game.bucket = { x: bucketPos.x, y: bucketPos.y, picked: false, dropY: 0 };
             
             // Setup canvas
             canvas.width = game.width * CONFIG.cellSize;
