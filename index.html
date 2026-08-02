@@ -160,7 +160,12 @@
             maxSize: 201,      // Maximum maze size (very large, requires scrolling)
             moveSpeed: 3,      // Pixels per frame
             adversaryDelay: 3000,  // ms before adversary starts chasing
-            adversarySpeed: 2.0,   // Pixels per frame (slower than player for easier gameplay)
+            adversaryStartSpeed: 1.0,      // Initial speed once the fire activates (px/frame)
+            adversaryMaxSpeed: 3.2,        // Speed reached after ramping up (px/frame)
+            adversarySpeedRampTime: 45000, // ms for the fire to ramp from start to max speed
+            adversaryMistakeChance: 0.004, // Per-frame chance of taking a wrong turn while active
+            adversaryMistakeCooldown: 4000,// Minimum ms between wrong turns
+            adversaryMistakeDuration: 600, // ms spent wandering off path during a wrong turn
             bucketCollisionDist: 0.7,  // Grid cells distance for bucket pickup
             fireDropSpeed: 5,    // Pixels per frame for fire drop animation
             colors: {
@@ -190,7 +195,7 @@
             keys: {},  // Track pressed keys
             animationId: null,
             playerPath: [],  // Record of player positions
-            adversary: { x: 0, y: 0, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false },
+            adversary: { x: 0, y: 0, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false, activatedAt: null, confused: false, confusedUntil: 0, confusedTarget: null, lastMistakeTime: 0 },
             firstMoveTime: null,  // Track when player first moves
             bucket: { x: 0, y: 0, picked: false }  // Water bucket state
         };
@@ -424,10 +429,42 @@
             return true;
         }
 
+        // Speed ramps up from adversaryStartSpeed to adversaryMaxSpeed over adversarySpeedRampTime
+        function getAdversarySpeed() {
+            const { adversaryStartSpeed, adversaryMaxSpeed, adversarySpeedRampTime } = CONFIG;
+            if (!game.adversary.activatedAt) return adversaryStartSpeed;
+            const elapsed = Date.now() - game.adversary.activatedAt;
+            const t = Math.min(elapsed / adversarySpeedRampTime, 1);
+            return adversaryStartSpeed + t * (adversaryMaxSpeed - adversaryStartSpeed);
+        }
+
+        // Picks a random open neighboring cell for the adversary to wander into during a wrong turn
+        function pickWrongTurnTarget() {
+            const { cellSize } = CONFIG;
+            const gridPos = getGridPos(game.adversary.x, game.adversary.y);
+            const neighbors = [
+                { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+            ];
+
+            const validNeighbors = neighbors
+                .map(({ dx, dy }) => ({ x: gridPos.x + dx, y: gridPos.y + dy }))
+                .filter(({ x, y }) =>
+                    x >= 0 && x < game.width && y >= 0 && y < game.height && game.maze[y][x] === 0
+                );
+
+            if (validNeighbors.length === 0) return null;
+
+            const target = validNeighbors[Math.floor(Math.random() * validNeighbors.length)];
+            return {
+                x: target.x * cellSize + cellSize / 2,
+                y: target.y * cellSize + cellSize / 2
+            };
+        }
+
         function updateGame() {
             if (game.won) return;
 
-            const { moveSpeed, cellSize, adversarySpeed, adversaryDelay } = CONFIG;
+            const { moveSpeed, cellSize, adversaryDelay } = CONFIG;
             let moved = false;
             let newX = game.player.x;
             let newY = game.player.y;
@@ -512,19 +549,47 @@
             if (game.firstMoveTime && !game.adversary.active && !game.adversary.killed) {
                 if (Date.now() - game.firstMoveTime >= adversaryDelay) {
                     game.adversary.active = true;
+                    game.adversary.activatedAt = Date.now();
                 }
             }
 
             // Update adversary position
             if (game.adversary.active && game.playerPath.length > 0) {
-                // Move along the player's path
-                if (game.adversary.pathIndex < game.playerPath.length - 1) {
+                const speed = getAdversarySpeed();
+
+                // Occasionally take a wrong turn, wandering off the correct path briefly
+                if (!game.adversary.confused &&
+                    Date.now() - game.adversary.lastMistakeTime > CONFIG.adversaryMistakeCooldown &&
+                    Math.random() < CONFIG.adversaryMistakeChance) {
+                    const wrongTarget = pickWrongTurnTarget();
+                    if (wrongTarget) {
+                        game.adversary.confused = true;
+                        game.adversary.confusedUntil = Date.now() + CONFIG.adversaryMistakeDuration;
+                        game.adversary.confusedTarget = wrongTarget;
+                        game.adversary.lastMistakeTime = Date.now();
+                    }
+                }
+
+                if (game.adversary.confused) {
+                    // Wander towards the wrong-turn target instead of following the path
+                    const dx = game.adversary.confusedTarget.x - game.adversary.x;
+                    const dy = game.adversary.confusedTarget.y - game.adversary.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < speed || Date.now() > game.adversary.confusedUntil) {
+                        game.adversary.confused = false;
+                    } else {
+                        game.adversary.x += (dx / distance) * speed;
+                        game.adversary.y += (dy / distance) * speed;
+                    }
+                } else if (game.adversary.pathIndex < game.playerPath.length - 1) {
+                    // Move along the player's path
                     const target = game.playerPath[game.adversary.pathIndex];
                     const dx = target.x - game.adversary.x;
                     const dy = target.y - game.adversary.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
 
-                    if (distance < adversarySpeed) {
+                    if (distance < speed) {
                         // Reached this point, move to next
                         game.adversary.pathIndex++;
                         if (game.adversary.pathIndex < game.playerPath.length) {
@@ -534,8 +599,8 @@
                         }
                     } else {
                         // Move towards current target
-                        game.adversary.x += (dx / distance) * adversarySpeed;
-                        game.adversary.y += (dy / distance) * adversarySpeed;
+                        game.adversary.x += (dx / distance) * speed;
+                        game.adversary.y += (dy / distance) * speed;
                     }
                 }
 
@@ -616,7 +681,7 @@
             game.visited.add('1,1');
 
             // Reset adversary
-            game.adversary = { x: startX, y: startY, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false };
+            game.adversary = { x: startX, y: startY, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false, activatedAt: null, confused: false, confusedUntil: 0, confusedTarget: null, lastMistakeTime: 0 };
             game.playerPath = [];
             game.firstMoveTime = null;
             
