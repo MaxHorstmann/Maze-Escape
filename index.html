@@ -187,6 +187,7 @@
             player: { x: 0, y: 0 },  // Pixel coordinates
             exit: { x: 0, y: 0 },    // Grid coordinates
             moves: 0,
+            lastCellKey: '0,0',
             startTime: 0,
             timerInterval: null,
             level: 1,
@@ -500,9 +501,15 @@
                 // Record player path
                 game.playerPath.push({ x: newX, y: newY });
 
-                // Track visited cells
+                // Track visited cells, counting a move each time the player enters a new cell
                 const gridPos = getGridPos(newX, newY);
-                game.visited.add(`${gridPos.x},${gridPos.y}`);
+                const cellKey = `${gridPos.x},${gridPos.y}`;
+                if (cellKey !== game.lastCellKey) {
+                    game.moves++;
+                    movesEl.textContent = game.moves;
+                    game.lastCellKey = cellKey;
+                }
+                game.visited.add(cellKey);
 
                 // Check win condition
                 const distToExit = Math.sqrt(
@@ -679,6 +686,7 @@
             const startY = 1 * cellSize + cellSize / 2;
             game.player = { x: startX, y: startY };
             game.visited.add('1,1');
+            game.lastCellKey = '1,1';
 
             // Reset adversary
             game.adversary = { x: startX, y: startY, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false, activatedAt: null, confused: false, confusedUntil: 0, confusedTarget: null, lastMistakeTime: 0 };
