@@ -198,7 +198,8 @@
             playerPath: [],  // Record of player positions; the adversary chases by retracing this, not by pathfinding
             adversary: { x: 0, y: 0, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false, activatedAt: null, confused: false, confusedUntil: 0, confusedTarget: null, lastMistakeTime: 0 },
             firstMoveTime: null,  // Track when player first moves
-            bucket: { x: 0, y: 0, picked: false }  // Water bucket state
+            bucket: { x: 0, y: 0, picked: false },  // Water bucket state
+            autoSolve: { active: false, waypoints: [], index: 0 }  // Secret auto-navigate-to-exit cheat (triggered by Q)
         };
 
         // ==================== DOM ELEMENTS ====================
@@ -294,6 +295,43 @@
             return { x: Math.floor(width / 2), y: Math.floor(height / 2) };
         }
 
+        // Shortest path (grid cells) from start to goal via BFS, used by the auto-solve cheat
+        function findShortestPath(maze, width, height, start, goal) {
+            const key = (x, y) => `${x},${y}`;
+            const cameFrom = new Map();
+            const visited = new Set([key(start.x, start.y)]);
+            const queue = [start];
+
+            for (let i = 0; i < queue.length; i++) {
+                const cur = queue[i];
+                if (cur.x === goal.x && cur.y === goal.y) break;
+
+                for (const { dx, dy } of [{ dx: 0, dy: -1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }, { dx: 1, dy: 0 }]) {
+                    const nx = cur.x + dx;
+                    const ny = cur.y + dy;
+                    const nKey = key(nx, ny);
+
+                    if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                    if (maze[ny][nx] !== 0 || visited.has(nKey)) continue;
+
+                    visited.add(nKey);
+                    cameFrom.set(nKey, cur);
+                    queue.push({ x: nx, y: ny });
+                }
+            }
+
+            if (!visited.has(key(goal.x, goal.y))) return null;
+
+            const path = [];
+            let cur = goal;
+            while (cur.x !== start.x || cur.y !== start.y) {
+                path.push(cur);
+                cur = cameFrom.get(key(cur.x, cur.y));
+            }
+            path.push(start);
+            path.reverse();
+            return path;
+        }
 
         // ==================== RENDERING ====================
         function centerViewOnPlayer() {
@@ -483,22 +521,43 @@
             let newX = game.player.x;
             let newY = game.player.y;
 
-            // Calculate new position based on pressed keys
-            if (game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) {
-                newY -= moveSpeed;
+            if (game.autoSolve.active) {
+                // Steer towards the next waypoint on the precomputed path to the exit
+                const waypoint = game.autoSolve.waypoints[game.autoSolve.index];
+                const dx = waypoint.x - game.player.x;
+                const dy = waypoint.y - game.player.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < moveSpeed) {
+                    newX = waypoint.x;
+                    newY = waypoint.y;
+                    game.autoSolve.index++;
+                    if (game.autoSolve.index >= game.autoSolve.waypoints.length) {
+                        game.autoSolve.active = false;
+                    }
+                } else {
+                    newX = game.player.x + (dx / distance) * moveSpeed;
+                    newY = game.player.y + (dy / distance) * moveSpeed;
+                }
                 moved = true;
-            }
-            if (game.keys['ArrowDown'] || game.keys['s'] || game.keys['S']) {
-                newY += moveSpeed;
-                moved = true;
-            }
-            if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) {
-                newX -= moveSpeed;
-                moved = true;
-            }
-            if (game.keys['ArrowRight'] || game.keys['d'] || game.keys['D']) {
-                newX += moveSpeed;
-                moved = true;
+            } else {
+                // Calculate new position based on pressed keys
+                if (game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) {
+                    newY -= moveSpeed;
+                    moved = true;
+                }
+                if (game.keys['ArrowDown'] || game.keys['s'] || game.keys['S']) {
+                    newY += moveSpeed;
+                    moved = true;
+                }
+                if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) {
+                    newX -= moveSpeed;
+                    moved = true;
+                }
+                if (game.keys['ArrowRight'] || game.keys['d'] || game.keys['D']) {
+                    newX += moveSpeed;
+                    moved = true;
+                }
             }
 
             // Apply movement if valid
@@ -641,6 +700,23 @@
             render();
         }
 
+        // Secret cheat: compute a path to the exit and start auto-navigating along it
+        function startAutoSolve() {
+            if (game.won) return;
+
+            const { cellSize } = CONFIG;
+            const startPos = getGridPos(game.player.x, game.player.y);
+            const path = findShortestPath(game.maze, game.width, game.height, startPos, game.exit);
+            if (!path) return;
+
+            game.autoSolve.waypoints = path.map(cell => ({
+                x: cell.x * cellSize + cellSize / 2,
+                y: cell.y * cellSize + cellSize / 2
+            }));
+            game.autoSolve.index = 0;
+            game.autoSolve.active = true;
+        }
+
         function gameLoop() {
             updateGame();
             game.animationId = requestAnimationFrame(gameLoop);
@@ -709,6 +785,9 @@
             game.adversary = { x: startX, y: startY, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false, activatedAt: null, confused: false, confusedUntil: 0, confusedTarget: null, lastMistakeTime: 0 };
             game.playerPath = [];
             game.firstMoveTime = null;
+
+            // Reset auto-solve cheat (doesn't persist across levels)
+            game.autoSolve = { active: false, waypoints: [], index: 0 };
             
             // Set exit position (bottom-right corner area)
             game.exit = { x: game.width - 2, y: game.height - 2 };
@@ -754,12 +833,18 @@
 
             if (movementKeys.includes(e.key)) {
                 e.preventDefault();
+                game.autoSolve.active = false;  // manual input takes back control
                 game.keys[e.key] = true;
             }
 
             if (e.key === 'n' || e.key === 'N') {
                 e.preventDefault();
                 nextLevel();
+            }
+
+            if (e.key === 'q' || e.key === 'Q') {
+                e.preventDefault();
+                startAutoSolve();
             }
         });
 
@@ -775,6 +860,7 @@
 
         canvasWrapper.addEventListener('touchstart', (e) => {
             e.preventDefault();
+            game.autoSolve.active = false;  // manual input takes back control
             const touch = e.touches[0];
             touchStartX = touch.clientX;
             touchStartY = touch.clientY;
