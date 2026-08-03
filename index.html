@@ -216,36 +216,49 @@
             // Initialize maze with all walls
             const maze = Array(height).fill(null).map(() => Array(width).fill(1));
             
-            // Recursive backtracking algorithm
-            function carve(x, y) {
-                maze[y][x] = 0;
-                
-                // Directions: up, right, down, left
+            // Shuffled directions: up, right, down, left (in random order)
+            function shuffledDirections() {
                 const directions = [
                     { dx: 0, dy: -2 },
                     { dx: 2, dy: 0 },
                     { dx: 0, dy: 2 },
                     { dx: -2, dy: 0 }
                 ];
-                
-                // Shuffle directions
                 for (let i = directions.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
                     [directions[i], directions[j]] = [directions[j], directions[i]];
                 }
-                
-                for (const { dx, dy } of directions) {
-                    const nx = x + dx;
-                    const ny = y + dy;
-                    
+                return directions;
+            }
+
+            // Iterative backtracking algorithm (explicit stack instead of recursion,
+            // since maze dimensions can reach 201x201 and would risk a stack overflow)
+            function carve(startX, startY) {
+                const stack = [{ x: startX, y: startY, directions: shuffledDirections(), dirIndex: 0 }];
+                maze[startY][startX] = 0;
+
+                while (stack.length > 0) {
+                    const frame = stack[stack.length - 1];
+
+                    if (frame.dirIndex >= frame.directions.length) {
+                        stack.pop();
+                        continue;
+                    }
+
+                    const { dx, dy } = frame.directions[frame.dirIndex];
+                    frame.dirIndex++;
+                    const nx = frame.x + dx;
+                    const ny = frame.y + dy;
+
                     if (nx > 0 && nx < width - 1 && ny > 0 && ny < height - 1 && maze[ny][nx] === 1) {
                         // Carve passage
-                        maze[y + dy / 2][x + dx / 2] = 0;
-                        carve(nx, ny);
+                        maze[frame.y + dy / 2][frame.x + dx / 2] = 0;
+                        maze[ny][nx] = 0;
+                        stack.push({ x: nx, y: ny, directions: shuffledDirections(), dirIndex: 0 });
                     }
                 }
             }
-            
+
             // Start carving from (1, 1)
             carve(1, 1);
             
