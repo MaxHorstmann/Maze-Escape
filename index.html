@@ -194,7 +194,7 @@
             visited: new Set(),
             keys: {},  // Track pressed keys
             animationId: null,
-            playerPath: [],  // Record of player positions
+            playerPath: [],  // Record of player positions; the adversary chases by retracing this, not by pathfinding
             adversary: { x: 0, y: 0, active: false, pathIndex: 0, dropping: false, dropY: 0, killed: false, activatedAt: null, confused: false, confusedUntil: 0, confusedTarget: null, lastMistakeTime: 0 },
             firstMoveTime: null,  // Track when player first moves
             bucket: { x: 0, y: 0, picked: false }  // Water bucket state
@@ -553,7 +553,11 @@
                 }
             }
 
-            // Update adversary position
+            // Update adversary position.
+            // The fire deliberately chases by retracing game.playerPath (the player's own
+            // route so far) rather than computing its own shortest path through the maze.
+            // This guarantees the fire never takes a shortcut the player hasn't found yet,
+            // which is what makes it always trailing rather than able to cut the player off.
             if (game.adversary.active && game.playerPath.length > 0) {
                 const speed = getAdversarySpeed();
 
